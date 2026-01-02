@@ -54,22 +54,22 @@ class RecapBot(discord.Client):
         # If before is None, user has joined a channel
         # --> handle join with member, channel and time
         if before.channel is None:
-            self.log_event(member.id, member.name, timestamp, channel_after.id, channel_after.name, EventType.JOIN)
+            self.log_event(member.id, member.name, timestamp, channel_after.id, channel_after.name, EventType.JOIN.value)
             self.handle_voice_join(member, timestamp, channel_after)
             return
 
         # If after is None, user has left the VC completely
         # --> handle leave with member and time
         if after.channel is None:
-            self.log_event(member.id, member.name, timestamp, channel_before.id, channel_before.name, EventType.LEAVE)
+            self.log_event(member.id, member.name, timestamp, channel_before.id, channel_before.name, EventType.LEAVE.value)
             self.handle_voice_leave(member, timestamp, channel_before)
             return
 
         # If after and before both are not None
         # --> handle leaving the old channel
         # --> handle joining the new channel
-        self.log_event(member.id, member.name, timestamp, channel_before.id, channel_before.name, EventType.LEAVE)
-        self.log_event(member.id, member.name, timestamp, channel_after.id, channel_after.name, EventType.JOIN)
+        self.log_event(member.id, member.name, timestamp, channel_before.id, channel_before.name, EventType.LEAVE.value)
+        self.log_event(member.id, member.name, timestamp, channel_after.id, channel_after.name, EventType.JOIN.value)
 
         self.handle_voice_leave(member, timestamp, channel_before)
         self.handle_voice_join(member, timestamp, channel_after)
@@ -79,7 +79,7 @@ class RecapBot(discord.Client):
         # print(f'Before: {before}')
         # print(f'After: {after}')
 
-    def log_event(self, member_id: int, member_name: str, timestamp: float, channel_id: int, channel_name: str, event_type: EventType) -> None:
+    def log_event(self, member_id: int, member_name: str, timestamp: float, channel_id: int, channel_name: str, event_type: str) -> None:
         event_csv_string: str = f'{member_id}, {member_name}, {timestamp}, {channel_id}, {channel_name}, {event_type}\n'
 
         with open('data/event_log.csv', 'a') as event_log:
