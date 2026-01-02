@@ -111,7 +111,7 @@ class RecapBot(discord.Client):
             duration: float = timestamp - start_time
             channel_id: int = tracked_connection['channel_id']
             channel_name: str = tracked_connection['channel_name']
-            session_type: SessionType = SessionType.COMPLETE
+            session_type: str = SessionType.COMPLETE.value
         else:
             # Session corrupted, leave event without join
             member_name: str = member.name
@@ -119,7 +119,7 @@ class RecapBot(discord.Client):
             duration: float = 0
             channel_id: int = voice_channel.id
             channel_name: str = voice_channel.name
-            session_type: SessionType = SessionType.CORRUPTED
+            session_type: str = SessionType.CORRUPTED.value
 
         session_csv_string: str = f'{member_id}, {member_name}, {start_time}, {duration}, {channel_id}, {channel_name}, {session_type}\n'
         with open(f'data/session_log.csv', 'a') as session_log:
