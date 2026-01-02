@@ -30,12 +30,12 @@ class RecapBot(discord.Client):
         if not os.path.exists('data/event_log.csv'):
             print('Creating event_log.csv')
             with open('data/event_log.csv', 'w') as event_log:
-                event_log.write('member_id, member_name, timestamp, channel_id, channel_name, event_type\n')
+                event_log.write('member_id,member_name,timestamp,channel_id,channel_name,event_type\n')
 
         if not os.path.exists('data/session_log.csv'):
             print('Creating session_log.csv')
             with open('data/session_log.csv', 'w') as session_log:
-                session_log.write('member_id, member_name, start_time, duration, channel_id, channel_name, session_type\n')
+                session_log.write('member_id,member_name,start_time,duration,channel_id,channel_name,session_type\n')
 
     async def on_message(self, message) -> None:
         print(f'Message from {message.author}: {message.content}')
@@ -54,22 +54,22 @@ class RecapBot(discord.Client):
         # If before is None, user has joined a channel
         # --> handle join with member, channel and time
         if before.channel is None:
-            self.log_event(member.id, member.name, timestamp, channel_after.id, channel_after.name, EventType.JOIN.value)
+            self.log_event(member.id, member.name, timestamp, channel_after.id, channel_after.name, EventType.JOIN)
             self.handle_voice_join(member, timestamp, channel_after)
             return
 
         # If after is None, user has left the VC completely
         # --> handle leave with member and time
         if after.channel is None:
-            self.log_event(member.id, member.name, timestamp, channel_before.id, channel_before.name, EventType.LEAVE.value)
+            self.log_event(member.id, member.name, timestamp, channel_before.id, channel_before.name, EventType.LEAVE)
             self.handle_voice_leave(member, timestamp, channel_before)
             return
 
         # If after and before both are not None
         # --> handle leaving the old channel
         # --> handle joining the new channel
-        self.log_event(member.id, member.name, timestamp, channel_before.id, channel_before.name, EventType.LEAVE.value)
-        self.log_event(member.id, member.name, timestamp, channel_after.id, channel_after.name, EventType.JOIN.value)
+        self.log_event(member.id, member.name, timestamp, channel_before.id, channel_before.name, EventType.LEAVE)
+        self.log_event(member.id, member.name, timestamp, channel_after.id, channel_after.name, EventType.JOIN)
 
         self.handle_voice_leave(member, timestamp, channel_before)
         self.handle_voice_join(member, timestamp, channel_after)
@@ -79,8 +79,8 @@ class RecapBot(discord.Client):
         # print(f'Before: {before}')
         # print(f'After: {after}')
 
-    def log_event(self, member_id: int, member_name: str, timestamp: float, channel_id: int, channel_name: str, event_type: str) -> None:
-        event_csv_string: str = f'{member_id}, {member_name}, {timestamp}, {channel_id}, {channel_name}, {event_type}\n'
+    def log_event(self, member_id: int, member_name: str, timestamp: float, channel_id: int, channel_name: str, event_type: EventType) -> None:
+        event_csv_string: str = f'{member_id},{member_name},{timestamp},{channel_id},{channel_name},{event_type.value}\n'
 
         with open('data/event_log.csv', 'a') as event_log:
             event_log.write(event_csv_string)
@@ -111,7 +111,7 @@ class RecapBot(discord.Client):
             duration: float = timestamp - start_time
             channel_id: int = tracked_connection['channel_id']
             channel_name: str = tracked_connection['channel_name']
-            session_type: str = SessionType.COMPLETE.value
+            session_type: SessionType = SessionType.COMPLETE
         else:
             # Session corrupted, leave event without join
             member_name: str = member.name
@@ -119,9 +119,9 @@ class RecapBot(discord.Client):
             duration: float = 0
             channel_id: int = voice_channel.id
             channel_name: str = voice_channel.name
-            session_type: str = SessionType.CORRUPTED.value
+            session_type: SessionType = SessionType.CORRUPTED
 
-        session_csv_string: str = f'{member_id}, {member_name}, {start_time}, {duration}, {channel_id}, {channel_name}, {session_type}\n'
+        session_csv_string: str = f'{member_id},{member_name},{start_time},{duration},{channel_id},{channel_name},{session_type.value}\n'
         with open(f'data/session_log.csv', 'a') as session_log:
             session_log.write(session_csv_string)
 
