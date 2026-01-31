@@ -131,4 +131,4 @@ intents.message_content = True
 
 
 client = RecapBot(intents=intents)
-client.run(os.getenv('BOT_TOKEN'))
+client.run(os.getenv('PROD_TOKEN'))
