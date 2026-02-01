@@ -8,37 +8,74 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class EventType(Enum):
     JOIN = 'join'
     LEAVE = 'leave'
 
+
 class SessionType(Enum):
     COMPLETE = 'complete'
     CORRUPTED = 'corrupted'
+
 
 class RecapBot(discord.Client):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.currently_tracked_connections: dict = {}
+        self.DATA_PATH: str = 'data-dev'
+        self.EVENT_LOG_HEADER: str = 'member_id,member_name,timestamp,channel_id,channel_name,event_type\n'
+        self.SESSION_LOG_HEADER: str = 'member_id,member_name,start_time,duration,channel_id,channel_name,session_type\n'
 
     async def on_ready(self) -> None:
         print(f'Logged in as {self.user.name}!')
-        if not os.path.exists('data'):
+        if not os.path.exists(self.DATA_PATH):
             print('Creating data directory')
-            os.mkdir('data')
-        if not os.path.exists('data/event_log.csv'):
-            print('Creating event_log.csv')
-            with open('data/event_log.csv', 'w') as event_log:
-                event_log.write('member_id,member_name,timestamp,channel_id,channel_name,event_type\n')
+            os.mkdir(self.DATA_PATH)
+        else:
+            print('Data directory already exists')
 
-        if not os.path.exists('data/session_log.csv'):
-            print('Creating session_log.csv')
-            with open('data/session_log.csv', 'w') as session_log:
-                session_log.write('member_id,member_name,start_time,duration,channel_id,channel_name,session_type\n')
+        print('Checking file structure for all guilds')
+        for guild in self.guilds:
+            if not self.guild_files_exist(guild):
+                self.create_guild_files(guild)
 
     async def on_message(self, message) -> None:
         print(f'Message from {message.author}: {message.content}')
+
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        print(f'Bot was added to guild {guild.name} with id {guild.id}')
+        if not self.guild_files_exist(guild):
+            self.create_guild_files(guild)
+
+    def guild_files_exist(self, guild) -> bool:
+        """
+        Checks if the file structure needed for a guild is present in the data directory
+        :param guild: The guild to check
+        :return: True if the file exists, False otherwise
+        """
+        guild_path = os.path.join(self.DATA_PATH, str(guild.id))
+        return (os.path.exists(guild_path)
+                and os.path.exists(os.path.join(guild_path, 'event_log.csv'))
+                and os.path.exists(os.path.join(guild_path, 'session_log.csv')))
+
+    def create_guild_files(self, guild) -> None:
+        """
+        Creates the file structure to support data from the specified guild
+        :param guild: The guild to create files for
+        :return:
+        """
+        print(f'Creating file structure for guild {guild.name} with id {guild.id}')
+        guild_path = os.path.join(self.DATA_PATH, str(guild.id))
+        if not os.path.exists(guild_path):
+            os.mkdir(guild_path)
+        if not os.path.exists(os.path.join(guild_path, 'event_log.csv')):
+            with open(os.path.join(guild_path, 'event_log.csv'), 'w') as event_log:
+                event_log.write(self.EVENT_LOG_HEADER)
+        if not os.path.exists(os.path.join(guild_path, 'session_log.csv')):
+            with open(os.path.join(guild_path, 'session_log.csv'), 'w') as session_log:
+                session_log.write(self.SESSION_LOG_HEADER)
 
     async def on_voice_state_update(self, member, before, after) -> None:
 
@@ -50,6 +87,8 @@ class RecapBot(discord.Client):
 
         channel_after: VoiceChannel = after.channel
         channel_before: VoiceChannel = before.channel
+
+        guild_id: str = str(member.guild.id)
 
         # If before is None, user has joined a channel
         # --> handle join with member, channel and time
@@ -79,7 +118,8 @@ class RecapBot(discord.Client):
         # print(f'Before: {before}')
         # print(f'After: {after}')
 
-    def log_event(self, member_id: int, member_name: str, timestamp: float, channel_id: int, channel_name: str, event_type: EventType) -> None:
+    def log_event(self, member_id: int, member_name: str, timestamp: float, channel_id: int, channel_name: str,
+                  event_type: EventType) -> None:
         event_csv_string: str = f'{member_id},{member_name},{timestamp},{channel_id},{channel_name},{event_type.value}\n'
 
         with open('data/event_log.csv', 'a') as event_log:
@@ -125,10 +165,11 @@ class RecapBot(discord.Client):
         with open(f'data/session_log.csv', 'a') as session_log:
             session_log.write(session_csv_string)
 
+
 intents = discord.Intents.default()
 intents.voice_states = True
 intents.message_content = True
-
+intents.guilds = True
 
 client = RecapBot(intents=intents)
-client.run(os.getenv('PROD_TOKEN'))
+client.run(os.getenv('DEV_TOKEN'))
