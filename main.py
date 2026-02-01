@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from enum import Enum
 import argparse
@@ -35,23 +36,23 @@ class RecapBot(discord.Client):
         self.EVENT_LOG_FILENAME: str = 'event_log.csv'
 
     async def on_ready(self) -> None:
-        print(f'Logged in as {self.user.name}!')
+        logger.info(f'Logged in as {self.user.name}')
         if not os.path.exists(self.DATA_PATH):
-            print('Creating data directory')
+            logger.info(f'No data directory found, creating data directory with path {self.DATA_PATH}')
             os.mkdir(self.DATA_PATH)
         else:
-            print('Data directory already exists')
+            logger.info(f'Data directory found at {self.DATA_PATH}')
 
-        print('Checking file structure for all guilds')
+        logger.info('Checking file structure for all guilds the bot is in, creating missing directories')
         for guild in self.guilds:
             if not self.guild_files_exist(guild):
                 self.create_guild_files(guild)
 
     async def on_message(self, message) -> None:
-        print(f'Message from {message.author}: {message.content}')
+        logger.info(f'Message received from {message.author}: {message.content}')
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
-        print(f'Bot was added to guild {guild.name} with id {guild.id}')
+        logger.info(f'Bot has joined guild {guild.name} with id {guild.id}')
         if not self.guild_files_exist(guild):
             self.create_guild_files(guild)
 
@@ -72,7 +73,7 @@ class RecapBot(discord.Client):
         :param guild: The guild to create files for
         :return:
         """
-        print(f'Creating file structure for guild {guild.name} with id {guild.id}')
+        logger.info(f'Creating file structure for guild {guild.name} with id {guild.id}')
         guild_path = os.path.join(self.DATA_PATH, str(guild.id))
         if not os.path.exists(guild_path):
             os.mkdir(guild_path)
@@ -92,8 +93,6 @@ class RecapBot(discord.Client):
             return
 
         guild = member.guild
-        if not self.guild_files_exist(guild):
-            self.create_guild_files(guild)
 
         channel_after: VoiceChannel = after.channel
         channel_before: VoiceChannel = before.channel
@@ -190,13 +189,9 @@ class RecapBot(discord.Client):
         with open(session_log_path, 'a') as session_log:
             session_log.write(session_csv_string)
 
-
-
-
-
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
-    logger.info('Starting Server Recap Bot')
+
+    init_logs()
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--mode', choices=['dev', 'prod'], default=None, type=str)
@@ -204,11 +199,20 @@ def main() -> None:
     mode: str = args.mode
 
     if mode == 'prod':
-        print('Running in production mode')
-
-    if mode is None:
+        answer = input('Bot about to run in production, continue? (y/n) ')
+        while answer != 'y' and answer != 'n':
+            print('Please enter either "y" or "n"')
+            answer = input('Bot about to run in production, continue? (y/n) ')
+        if answer == 'n':
+            logger.info('Exiting bot')
+            exit(0)
+        elif answer == 'y':
+            logger.info('Starting bot in production mode')
+    elif mode == 'dev':
+        logger.info('Starting bot in development mode')
+    elif mode is None:
         mode = 'dev'
-        print('No mode specified, defaulting to development')
+        logger.warning('No mode was specified, defaulting to development')
 
     load_dotenv()
 
@@ -222,6 +226,26 @@ def main() -> None:
 
     client = RecapBot(intents=intents, mode=mode, data_path=data_path)
     client.run(token)
+
+
+def init_logs():
+    if not os.path.exists('logs'):
+        os.mkdir('logs')
+    with open(os.path.join('logs', 'log.log'), 'w') as log:
+        log.write('')
+
+    logger.setLevel(logging.INFO)
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setLevel(logging.INFO)
+    stdout_handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s',
+                                                  datefmt='%Y-%m-%d %H:%M:%S'))
+    logfile_handler = logging.FileHandler(os.path.join('logs', 'log.log'))
+    logfile_handler.setLevel(logging.INFO)
+    logfile_handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s',
+                                                   datefmt='%Y-%m-%d %H:%M:%S'))
+    logger.addHandler(stdout_handler)
+    logger.addHandler(logfile_handler)
+
 
 if __name__ == '__main__':
     main()

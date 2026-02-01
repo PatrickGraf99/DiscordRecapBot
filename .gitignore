@@ -185,3 +185,4 @@ cython_debug/
 /data
 /data-dev
 /data-prod
+/logs
