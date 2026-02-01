@@ -183,3 +183,5 @@ cython_debug/
 # Custom stuff here
 # Exclude log files and other data
 /data
+/data-dev
+/data-prod
