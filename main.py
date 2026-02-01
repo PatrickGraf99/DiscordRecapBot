@@ -1,14 +1,14 @@
 import os
 import time
 from enum import Enum
+import argparse
+import logging
 
 import discord
 from discord import VoiceChannel
-from discord.app_commands import guilds
 from dotenv import load_dotenv
 
-load_dotenv()
-
+logger = logging.getLogger('ServerRecapBot')
 
 class EventType(Enum):
     JOIN = 'join'
@@ -22,10 +22,11 @@ class SessionType(Enum):
 
 class RecapBot(discord.Client):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, mode: str, data_path: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.mode: str = mode
         self.currently_tracked_connections: dict = {}
-        self.DATA_PATH: str = 'data-dev'
+        self.DATA_PATH: str = data_path
         self.EVENT_LOG_HEADER: str = ('member_id,member_name,timestamp,guild_id,guild_name,'
                                       'channel_id,channel_name,event_type\n')
         self.SESSION_LOG_HEADER: str = ('member_id,member_name,start_time,duration,guild_id,guild_name,'
@@ -190,10 +191,37 @@ class RecapBot(discord.Client):
             session_log.write(session_csv_string)
 
 
-intents = discord.Intents.default()
-intents.voice_states = True
-intents.message_content = True
-intents.guilds = True
 
-client = RecapBot(intents=intents)
-client.run(os.getenv('DEV_TOKEN'))
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO)
+    logger.info('Starting Server Recap Bot')
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-m', '--mode', choices=['dev', 'prod'], default=None, type=str)
+    args = parser.parse_args()
+    mode: str = args.mode
+
+    if mode == 'prod':
+        print('Running in production mode')
+
+    if mode is None:
+        mode = 'dev'
+        print('No mode specified, defaulting to development')
+
+    load_dotenv()
+
+    intents = discord.Intents.default()
+    intents.voice_states = True
+    intents.message_content = True
+    intents.guilds = True
+
+    token = os.getenv('DEV_TOKEN') if mode == 'dev' else os.getenv('PROD_TOKEN')
+    data_path = 'data-dev' if mode == 'dev' else 'data-prod'
+
+    client = RecapBot(intents=intents, mode=mode, data_path=data_path)
+    client.run(token)
+
+if __name__ == '__main__':
+    main()
