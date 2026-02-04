@@ -49,7 +49,7 @@ class RecapBot(discord.Client):
                 self.create_guild_files(guild)
 
     async def on_message(self, message) -> None:
-        logger.info(f'Message received from {message.author}: {message.content}')
+        logger.debug(f'Message received from {message.author}: {message.content}')
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         logger.info(f'Bot has joined guild {guild.name} with id {guild.id}')
@@ -85,6 +85,12 @@ class RecapBot(discord.Client):
                 session_log.write(self.SESSION_LOG_HEADER)
 
     async def on_voice_state_update(self, member, before, after) -> None:
+
+        logger.debug('Received a voice state update')
+        logger.debug(f'Voice state update by Member {str(member.name)}({str(member.id)}) '
+                     f'in guild {member.guild.name}({str(member.guild.id)})')
+        logger.debug(f'Old state: {before}')
+        logger.debug(f'New state: {after}')
 
         timestamp: float = time.time()
 
@@ -139,6 +145,9 @@ class RecapBot(discord.Client):
         with open(event_log_path, 'a') as event_log:
             event_log.write(event_csv_string)
 
+        logger.debug(f'An event has been triggered, logging: {event_csv_string}')
+
+
     def handle_voice_join(self, member: discord.Member, timestamp: float, voice_channel: discord.VoiceChannel) -> None:
         """
         Stores the connection of the member in a dictionary. Will write to file when user leaves
@@ -189,9 +198,11 @@ class RecapBot(discord.Client):
         with open(session_log_path, 'a') as session_log:
             session_log.write(session_csv_string)
 
+        logger.debug(f'A session has been ended, logging: {session_csv_string}')
+
 def main() -> None:
 
-    init_logs()
+    log_handlers = init_logs()
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--mode', choices=['dev', 'prod'], default=None, type=str)
@@ -210,16 +221,22 @@ def main() -> None:
             logger.info('Starting bot in production mode')
     elif mode == 'dev':
         logger.info('Starting bot in development mode')
-    elif mode is None:
+        logger.setLevel(logging.DEBUG)
+        for handler in log_handlers:
+            handler.setLevel(logging.DEBUG)
+    else:
         mode = 'dev'
-        logger.warning('No mode was specified, defaulting to development')
+        logger.warning('No mode or wrong mode was specified, defaulting to development')
+        logger.setLevel(logging.DEBUG)
+        for handler in log_handlers:
+            handler.setLevel(logging.DEBUG)
 
     load_dotenv()
 
     intents = discord.Intents.default()
     intents.voice_states = True
-    intents.message_content = True
     intents.guilds = True
+    intents.members = True
 
     token = os.getenv('DEV_TOKEN') if mode == 'dev' else os.getenv('PROD_TOKEN')
     data_path = 'data-dev' if mode == 'dev' else 'data-prod'
@@ -228,7 +245,7 @@ def main() -> None:
     client.run(token)
 
 
-def init_logs():
+def init_logs() -> list:
     if not os.path.exists('logs'):
         os.mkdir('logs')
     with open(os.path.join('logs', 'log.log'), 'w') as log:
@@ -246,6 +263,7 @@ def init_logs():
     logger.addHandler(stdout_handler)
     logger.addHandler(logfile_handler)
 
+    return [stdout_handler, logfile_handler]
 
 if __name__ == '__main__':
     main()
