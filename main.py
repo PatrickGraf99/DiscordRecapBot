@@ -5,7 +5,6 @@ import time
 from enum import Enum
 import argparse
 import logging
-from fileinput import filename
 
 import discord
 from discord import VoiceChannel, Intents
@@ -147,7 +146,7 @@ class RecapBot(discord.Client):
         with open(event_log_path, 'a') as event_log:
             event_log.write(event_csv_string)
 
-        logger.debug(f'An event has been triggered, logging: {event_csv_string}')
+        #logger.debug(f'An event has been triggered, logging: {event_csv_string}')
 
 
     def handle_voice_join(self, member: discord.Member, timestamp: float, voice_channel: discord.VoiceChannel) -> None:
@@ -200,7 +199,7 @@ class RecapBot(discord.Client):
         with open(session_log_path, 'a') as session_log:
             session_log.write(session_csv_string)
 
-        logger.debug(f'A session has been ended, logging: {session_csv_string}')
+        #logger.debug(f'A session has been ended, logging: {session_csv_string}')
 
 def main() -> None:
 
@@ -246,7 +245,7 @@ def init_logs(mode: str) -> None:
     logfile_name: str = f'logs-dev-{timestamp_str}.log' if mode == 'dev' else f'logs-prod-{timestamp_str}.log'
     level = logging.DEBUG if mode == 'dev' else logging.INFO
 
-    file_handler = logging.FileHandler(logfile_name)
+    file_handler = logging.FileHandler(os.path.join('logs',logfile_name))
     file_handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s',
                                                    datefmt='%Y-%m-%d %H:%M:%S'))
     file_handler.setLevel(level)
