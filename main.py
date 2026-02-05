@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 import sys
 import time
@@ -6,7 +7,7 @@ import argparse
 import logging
 
 import discord
-from discord import VoiceChannel
+from discord import VoiceChannel, Intents
 from dotenv import load_dotenv
 
 logger = logging.getLogger('ServerRecapBot')
@@ -49,7 +50,7 @@ class RecapBot(discord.Client):
                 self.create_guild_files(guild)
 
     async def on_message(self, message) -> None:
-        logger.info(f'Message received from {message.author}: {message.content}')
+        logger.debug(f'Message received from {message.author}: {message.content}')
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         logger.info(f'Bot has joined guild {guild.name} with id {guild.id}')
@@ -85,6 +86,12 @@ class RecapBot(discord.Client):
                 session_log.write(self.SESSION_LOG_HEADER)
 
     async def on_voice_state_update(self, member, before, after) -> None:
+
+        logger.debug('Received a voice state update')
+        logger.debug(f'Voice state update by Member {str(member.name)}({str(member.id)}) '
+                     f'in guild {member.guild.name}({str(member.guild.id)})')
+        logger.debug(f'Old state: {before}')
+        logger.debug(f'New state: {after}')
 
         timestamp: float = time.time()
 
@@ -139,6 +146,9 @@ class RecapBot(discord.Client):
         with open(event_log_path, 'a') as event_log:
             event_log.write(event_csv_string)
 
+        #logger.debug(f'An event has been triggered, logging: {event_csv_string}')
+
+
     def handle_voice_join(self, member: discord.Member, timestamp: float, voice_channel: discord.VoiceChannel) -> None:
         """
         Stores the connection of the member in a dictionary. Will write to file when user leaves
@@ -189,9 +199,9 @@ class RecapBot(discord.Client):
         with open(session_log_path, 'a') as session_log:
             session_log.write(session_csv_string)
 
-def main() -> None:
+        #logger.debug(f'A session has been ended, logging: {session_csv_string}')
 
-    init_logs()
+def main() -> None:
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--mode', choices=['dev', 'prod'], default=None, type=str)
@@ -199,6 +209,7 @@ def main() -> None:
     mode: str = args.mode
 
     if mode == 'prod':
+        init_logs(mode)
         answer = input('Bot about to run in production, continue? (y/n) ')
         while answer != 'y' and answer != 'n':
             print('Please enter either "y" or "n"')
@@ -209,17 +220,16 @@ def main() -> None:
         elif answer == 'y':
             logger.info('Starting bot in production mode')
     elif mode == 'dev':
+        init_logs(mode)
         logger.info('Starting bot in development mode')
-    elif mode is None:
+    else:
         mode = 'dev'
-        logger.warning('No mode was specified, defaulting to development')
+        init_logs(mode)
+        logger.warning('No mode or wrong mode was specified, defaulting to development')
 
     load_dotenv()
 
-    intents = discord.Intents.default()
-    intents.voice_states = True
-    intents.message_content = True
-    intents.guilds = True
+    intents = get_bot_intents()
 
     token = os.getenv('DEV_TOKEN') if mode == 'dev' else os.getenv('PROD_TOKEN')
     data_path = 'data-dev' if mode == 'dev' else 'data-prod'
@@ -227,25 +237,34 @@ def main() -> None:
     client = RecapBot(intents=intents, mode=mode, data_path=data_path)
     client.run(token)
 
-
-def init_logs():
+def init_logs(mode: str) -> None:
     if not os.path.exists('logs'):
         os.mkdir('logs')
-    with open(os.path.join('logs', 'log.log'), 'w') as log:
-        log.write('')
 
-    logger.setLevel(logging.INFO)
+    timestamp_str: str = datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d_%H-%M-%S")
+    logfile_name: str = f'logs-dev-{timestamp_str}.log' if mode == 'dev' else f'logs-prod-{timestamp_str}.log'
+    level = logging.DEBUG if mode == 'dev' else logging.INFO
+
+    file_handler = logging.FileHandler(os.path.join('logs',logfile_name))
+    file_handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s',
+                                                   datefmt='%Y-%m-%d %H:%M:%S'))
+    file_handler.setLevel(level)
+
     stdout_handler = logging.StreamHandler(sys.stdout)
-    stdout_handler.setLevel(logging.INFO)
     stdout_handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s',
                                                   datefmt='%Y-%m-%d %H:%M:%S'))
-    logfile_handler = logging.FileHandler(os.path.join('logs', 'log.log'))
-    logfile_handler.setLevel(logging.INFO)
-    logfile_handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s',
-                                                   datefmt='%Y-%m-%d %H:%M:%S'))
-    logger.addHandler(stdout_handler)
-    logger.addHandler(logfile_handler)
+    stdout_handler.setLevel(level)
 
+    logger.setLevel(level)
+    logger.addHandler(file_handler)
+    logger.addHandler(stdout_handler)
+
+def get_bot_intents() -> Intents:
+    intents = discord.Intents.default()
+    intents.voice_states = True
+    intents.guilds = True
+    intents.members = True
+    return intents
 
 if __name__ == '__main__':
     main()
