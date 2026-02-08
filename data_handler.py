@@ -13,6 +13,7 @@ class GuildEvent(enum.Enum):
     MEMBER_JOIN = 'member_join'
     MEMBER_REMOVE = 'member_remove'
     GUILD_RENAME = 'guild_rename'
+    GUILD_JOIN_BOT = 'guild_join_bot'
 
 class DataHandler:
 
@@ -136,3 +137,9 @@ class DataHandler:
         }
         self._append_guild_metadata(timestamp, guild_id, GuildEvent.GUILD_RENAME.value, payload)
 
+    def log_guild_bot_join(self, timestamp: float, guild_id: int, guild_name: str) -> None:
+        payload = {
+            'guild_id': guild_id,
+            'guild_name': guild_name,
+        }
+        self._append_guild_metadata(timestamp, guild_id, GuildEvent.GUILD_JOIN_BOT.value, payload)

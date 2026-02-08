@@ -45,7 +45,16 @@ class RecapBot(discord.Client):
     async def on_guild_join(self, guild: discord.Guild) -> None:
         logger.info(f'Bot has joined guild {guild.name} with id {guild.id}')
         self.data_handler.ensure_guild_files_exist(guild.id)
+        self.data_handler.log_guild_bot_join(time.time(), guild.id, guild.name)
 
+    async def on_guild_update(self, before, after) -> None:
+        pass
+
+    async def on_member_join(self, member: discord.Member) -> None:
+        pass
+
+    async def on_member_remove(self, member: discord.Member) -> None:
+        pass
 
     async def on_voice_state_update(self, member, before, after) -> None:
 
@@ -94,10 +103,7 @@ class RecapBot(discord.Client):
         self.handle_voice_leave(member, timestamp, channel_before)
         self.handle_voice_join(member, timestamp, channel_after)
 
-        # print(f'Member {member.name} has joined voice channel {after.channel} from {before.channel}')
-        # print(f'Member: {member}')
-        # print(f'Before: {before}')
-        # print(f'After: {after}')
+
 
     def handle_voice_join(self, member: discord.Member, timestamp: float, voice_channel: discord.VoiceChannel) -> None:
         """
