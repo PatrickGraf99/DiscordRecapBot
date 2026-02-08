@@ -37,14 +37,14 @@ class RecapBot(discord.Client):
         logger.info(f'Logged in as {self.user.name}')
         logger.info('Checking file structure for all guilds the bot is in, creating missing directories')
         for guild in self.guilds:
-            self.data_handler.ensure_guild_files_exist(str(guild.id))
+            self.data_handler.ensure_guild_files_exist(guild.id)
 
     async def on_message(self, message) -> None:
         logger.debug(f'Message received from {message.author}: {message.content}')
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         logger.info(f'Bot has joined guild {guild.name} with id {guild.id}')
-        self.data_handler.ensure_guild_files_exist(str(guild.id))
+        self.data_handler.ensure_guild_files_exist(guild.id)
 
 
     async def on_voice_state_update(self, member, before, after) -> None:
