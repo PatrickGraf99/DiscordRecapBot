@@ -75,6 +75,7 @@ class DataHandler:
             session_log.write(session_csv_string)
 
     def _append_guild_metadata(self, timestamp: float, guild_id: int, guild_event_type: str, payload: dict) -> None:
+        logger.debug(f'Guild {guild_id} event type {guild_event_type}')
         self.ensure_guild_files_exist(guild_id)
 
         json_object = {'schema_version': self.json_schema_version, 'timestamp': timestamp,
@@ -139,7 +140,6 @@ class DataHandler:
 
     def log_guild_bot_join(self, timestamp: float, guild_id: int, guild_name: str) -> None:
         payload = {
-            'guild_id': guild_id,
             'guild_name': guild_name,
         }
         self._append_guild_metadata(timestamp, guild_id, GuildEvent.GUILD_JOIN_BOT.value, payload)

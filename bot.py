@@ -47,14 +47,34 @@ class RecapBot(discord.Client):
         self.data_handler.ensure_guild_files_exist(guild.id)
         self.data_handler.log_guild_bot_join(time.time(), guild.id, guild.name)
 
-    async def on_guild_update(self, before, after) -> None:
+    async def on_guild_update(self, before: discord.Guild, after: discord.Guild) -> None:
+        logger.debug('A guild has been updated')
+        logger.debug(f'Old state: {before.id}')
+        logger.debug(f'New state: {after}')
+        timestamp: float = time.time()
+        if before.name != after.name:
+            logger.debug(f'Name changed from {before.name} to {after.name}')
+            self.data_handler.log_guild_rename(timestamp, before.id, before.name, after.name)
+
+    async def on_guild_channel_create(self, channel) -> None:
+        pass
+
+    async def on_guild_channel_delete(self, channel) -> None:
+        pass
+
+    async def on_guild_channel_update(self, before, after) -> None:
         pass
 
     async def on_member_join(self, member: discord.Member) -> None:
-        pass
+        logger.info(f'Member {member.name} with id {member.id} joined guild {member.guild.name}')
+        timestamp: float = time.time()
+        self.data_handler.log_guild_member_join(timestamp, member.guild.id, member.id, member.name)
 
     async def on_member_remove(self, member: discord.Member) -> None:
-        pass
+        logger.debug(f'Member {member.name} ({member.id}) has been removed from guild {member.guild.name}')
+        timestamp: float = time.time()
+        self.data_handler.log_guild_member_remove(timestamp, member.guild.id, member.id, member.name)
+
 
     async def on_voice_state_update(self, member, before, after) -> None:
 
@@ -111,19 +131,9 @@ class RecapBot(discord.Client):
         :return:
         """
         guild = member.guild
-
-        # Data that needs to be logged
-        member_id: int = member.id
-        member_name: str = member.name
-        timestamp: float = timestamp
-        guild_id: int = guild.id
-        guild_name: str = guild.name
-        channel_id: int = voice_channel.id
-        channel_name: str = voice_channel.name
-
-        connection: dict = {'member_name': member_name, 'timestamp': timestamp, 'guild_name': guild_name,
-                            'channel_name': channel_name, 'channel_id': channel_id}
-        self.currently_tracked_connections[(member_id, guild_id)] = connection
+        connection: dict = {'member_name': member.name, 'timestamp': timestamp, 'guild_name': guild.name,
+                            'channel_name': voice_channel.name, 'channel_id': voice_channel.id}
+        self.currently_tracked_connections[(member.id, guild.id)] = connection
 
     def handle_voice_leave(self, member: discord.Member, timestamp: float, voice_channel: discord.VoiceChannel) -> None:
         member_id: int = member.id
