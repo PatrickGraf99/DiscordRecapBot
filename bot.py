@@ -7,7 +7,7 @@ import argparse
 import logging
 
 import discord
-from discord import VoiceChannel, Intents
+from discord import VoiceChannel, Intents, ChannelType
 from dotenv import load_dotenv
 
 from data_handler import DataHandler
@@ -41,6 +41,8 @@ class RecapBot(discord.Client):
 
     async def on_message(self, message) -> None:
         logger.debug(f'Message received from {message.author}: {message.content}')
+        # TODO: Build message logging
+        # TODO: {timestamp; author; guild; channel_id}
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         logger.info(f'Bot has joined guild {guild.name} with id {guild.id}')
@@ -49,21 +51,39 @@ class RecapBot(discord.Client):
 
     async def on_guild_update(self, before: discord.Guild, after: discord.Guild) -> None:
         logger.debug('A guild has been updated')
-        logger.debug(f'Old state: {before.id}')
-        logger.debug(f'New state: {after}')
         timestamp: float = time.time()
         if before.name != after.name:
             logger.debug(f'Name changed from {before.name} to {after.name}')
             self.data_handler.log_guild_rename(timestamp, before.id, before.name, after.name)
 
+
     async def on_guild_channel_create(self, channel) -> None:
-        pass
+        timestamp: float = time.time()
+        category_id = channel.category.id if channel.category is not None else None
+        logger.debug(f'A channel has been created in guild {channel.guild} with name {channel.name}')
+        self.data_handler.log_guild_channel_add(timestamp, channel.guild.id, channel.id, channel.name,
+                                                    category_id, channel.type.name)
 
     async def on_guild_channel_delete(self, channel) -> None:
-        pass
+        timestamp: float = time.time()
+        category_id = channel.category.id if channel.category is not None else None
+        logger.debug(f'A channel has been deleted in guild {channel.guild} with name {channel.name}')
+        self.data_handler.log_guild_channel_remove(timestamp, channel.guild.id, channel.id, channel.name,
+                                                category_id, channel.type.name)
 
     async def on_guild_channel_update(self, before, after) -> None:
-        pass
+        timestamp: float = time.time()
+        category_before_id = before.category.id if before.category is not None else None
+        category_after_id = after.category.id if after.category is not None else None
+        if before.name != after.name:
+            logger.debug(f'A channel has changed name in guild {before.guild} from {before.name} to {after.name}')
+            self.data_handler.log_guild_channel_rename(timestamp, before.guild.id, before.id, before.name,
+                                                    after.name, category_before_id, before.type.name)
+
+        if category_before_id != category_after_id:
+            logger.debug(f'Category of {after.name} changed from {category_before_id} to {category_after_id}')
+            self.data_handler.log_guild_channel_category_change(timestamp, before.guild.id, before.id, before.name,
+                                                                category_before_id, category_after_id, before.type.name)
 
     async def on_member_join(self, member: discord.Member) -> None:
         logger.info(f'Member {member.name} with id {member.id} joined guild {member.guild.name}')
@@ -89,6 +109,7 @@ class RecapBot(discord.Client):
         # If channel stays the same it means user has not switched channel obviously
         if before.channel == after.channel:
             return
+
 
         guild = member.guild
 
@@ -229,6 +250,7 @@ def get_bot_intents() -> Intents:
     intents.voice_states = True
     intents.guilds = True
     intents.members = True
+    intents.messages = True
     return intents
 
 if __name__ == '__main__':

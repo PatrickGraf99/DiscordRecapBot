@@ -14,6 +14,7 @@ class GuildEvent(enum.Enum):
     MEMBER_REMOVE = 'member_remove'
     GUILD_RENAME = 'guild_rename'
     GUILD_JOIN_BOT = 'guild_join_bot'
+    CHANNEL_CATEGORY_CHANGE = 'channel_category_change'
 
 class DataHandler:
 
@@ -116,6 +117,18 @@ class DataHandler:
             'channel_type': channel_type
         }
         self._append_guild_metadata(timestamp, guild_id, GuildEvent.CHANNEL_RENAME.value, payload)
+
+    def log_guild_channel_category_change(self, timestamp: float, guild_id: int, channel_id: int, channel_name: str,
+                                          channel_category_old: int | None, channel_category_new: int | None,
+                                          channel_type: str) -> None:
+        payload = {
+            'channel_id': channel_id,
+            'channel_name': channel_name,
+            'channel_category_old': channel_category_old,
+            'channel_category_new': channel_category_new,
+            'channel_type': channel_type
+        }
+        self._append_guild_metadata(timestamp, guild_id, GuildEvent.CHANNEL_CATEGORY_CHANGE.value, payload)
 
     def log_guild_member_join(self, timestamp: float, guild_id: int, member_id: int, member_name: str) -> None:
         payload = {
