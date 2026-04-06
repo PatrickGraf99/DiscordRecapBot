@@ -6,8 +6,11 @@ from enum import Enum
 import argparse
 import logging
 
+from discord.ext import commands
+
 import discord
 from discord import VoiceChannel, Intents, ChannelType
+from discord.ext.commands import Bot
 from dotenv import load_dotenv
 
 from data_handler import DataHandler
@@ -24,7 +27,7 @@ class SessionType(Enum):
     CORRUPTED = 'corrupted'
 
 
-class RecapBot(discord.Client):
+class RecapBot(commands.Bot):
 
     def __init__(self, mode: str, data_path: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -32,17 +35,18 @@ class RecapBot(discord.Client):
         self.currently_tracked_connections: dict = {}
         self.data_handler = DataHandler(data_path)
 
-
     async def on_ready(self) -> None:
         logger.info(f'Logged in as {self.user.name}')
         logger.info('Checking file structure for all guilds the bot is in, creating missing directories')
         for guild in self.guilds:
             self.data_handler.ensure_guild_files_exist(guild.id)
 
+
     async def on_message(self, message) -> None:
         logger.debug(f'Message received from {message.author}: {message.content}')
         # TODO: Build message logging
         # TODO: {timestamp; author; guild; channel_id}
+        await self.process_commands(message)
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         logger.info(f'Bot has joined guild {guild.name} with id {guild.id}')
@@ -220,8 +224,16 @@ def main() -> None:
     token = os.getenv('DEV_TOKEN') if mode == 'dev' else os.getenv('PROD_TOKEN')
     data_path = 'data-dev' if mode == 'dev' else 'data-prod'
 
-    client = RecapBot(intents=intents, mode=mode, data_path=data_path)
-    client.run(token)
+    bot = RecapBot(command_prefix='wrap:' ,intents=intents, mode=mode, data_path=data_path)
+    @bot.command()
+    async def test(ctx: commands.Context) -> None:
+        await ctx.send('test')
+
+    bot.run(token)
+
+
+
+
 
 def init_logs(mode: str) -> None:
     if not os.path.exists('logs'):
@@ -251,6 +263,7 @@ def get_bot_intents() -> Intents:
     intents.guilds = True
     intents.members = True
     intents.messages = True
+    intents.message_content = True
     return intents
 
 if __name__ == '__main__':
