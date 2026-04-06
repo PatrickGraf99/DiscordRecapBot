@@ -1,8 +1,12 @@
+import shutil
+from datetime import datetime
 import enum
 import json
 import os
 import logging
+import time
 
+import discord
 
 logger = logging.getLogger('ServerRecapBot.data')
 
@@ -30,7 +34,6 @@ class DataHandler:
         self.SESSION_LOG_FILENAME: str = 'session_log.csv'
         self.EVENT_LOG_FILENAME: str = 'event_log.csv'
         self.GUILD_EVENTS_FILENAME: str = 'guild_events.jsonl'
-        self.GUILD_METADATA_SNAPSHOT_FILENAME: str = 'guild_snapshot.json'
         self.json_schema_version: int = 1
 
     def ensure_guild_files_exist(self, guild_id: int) -> None:
@@ -42,17 +45,15 @@ class DataHandler:
         event_log_file = os.path.join(guild_dir, self.EVENT_LOG_FILENAME)
         session_log_file = os.path.join(guild_dir, self.SESSION_LOG_FILENAME)
         metadata_event_file = os.path.join(guild_dir, self.GUILD_EVENTS_FILENAME)
-        metadata_snapshot_file = os.path.join(guild_dir, self.GUILD_METADATA_SNAPSHOT_FILENAME)
         if not os.path.exists(event_log_file):
             with open(event_log_file, 'w') as file:
                 file.write(self.EVENT_LOG_HEADER)
         if not os.path.exists(session_log_file):
             with open(session_log_file, 'w') as file:
                 file.write(self.SESSION_LOG_HEADER)
-        for filename in [metadata_event_file, metadata_snapshot_file]:
-            if not os.path.exists(filename):
-                with open(filename, 'w') as file:
-                    file.write('')
+        if not os.path.exists(metadata_event_file):
+            with open(metadata_event_file, 'w') as file:
+                file.write('')
         self.initialized_guilds_ids.add(guild_id)
 
     def log_event(self, member_id: int, member_name: str, timestamp: float, guild_id: int, guild_name: str,
@@ -156,3 +157,21 @@ class DataHandler:
             'guild_name': guild_name,
         }
         self._append_guild_metadata(timestamp, guild_id, GuildEvent.GUILD_JOIN_BOT.value, payload)
+
+    def get_zip_for_guild(self, guild_id: int, guild_name: str) -> dict:
+        path:str = os.path.join(self.DATA_PATH, str(guild_id))
+        guild_name = guild_name.replace(' ', '_')
+        timestamp  = datetime.now()
+        formatted = timestamp.strftime("%Y-%m-%d_%H-%M-%S")
+        filename:str = 'data_' + guild_name + '_' + formatted
+        target_path = os.path.join(path, filename)
+        shutil.make_archive(target_path, 'zip', path)
+        file = discord.File(target_path + '.zip')
+        filepath = target_path + '.zip'
+        return {
+            'file': file,
+            'filepath': filepath
+        }
+
+    def remove_file(self, path: str) -> None:
+        os.remove(path)

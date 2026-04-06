@@ -35,12 +35,13 @@ class RecapBot(commands.Bot):
         self.currently_tracked_connections: dict = {}
         self.data_handler = DataHandler(data_path)
 
+    # region Overrides
+
     async def on_ready(self) -> None:
         logger.info(f'Logged in as {self.user.name}')
         logger.info('Checking file structure for all guilds the bot is in, creating missing directories')
         for guild in self.guilds:
             self.data_handler.ensure_guild_files_exist(guild.id)
-
 
     async def on_message(self, message) -> None:
         logger.debug(f'Message received from {message.author}: {message.content}')
@@ -148,7 +149,25 @@ class RecapBot(commands.Bot):
         self.handle_voice_leave(member, timestamp, channel_before)
         self.handle_voice_join(member, timestamp, channel_after)
 
+    # endregion
 
+    # region Command Methods
+
+    async def send_collected_data(self, ctx) -> None:
+        await ctx.send('All data that has been stored will be sent to you via DM!')
+        dm_channel = ctx.author.dm_channel
+        if dm_channel is None:
+            dm_channel = await self.create_dm(ctx.author)
+        data = self.data_handler.get_zip_for_guild(ctx.guild.id, ctx.guild.name)
+        file: discord.File = data['file']
+        filepath = data['filepath']
+        await dm_channel.send(f'Here is all data stored for the guild {ctx.guild.name}')
+        await dm_channel.send(file=file)
+        self.data_handler.remove_file(filepath)
+
+    # endregion
+
+    # region Own Methods
 
     def handle_voice_join(self, member: discord.Member, timestamp: float, voice_channel: discord.VoiceChannel) -> None:
         """
@@ -189,6 +208,8 @@ class RecapBot(commands.Bot):
 
         #logger.debug(f'A session has been ended, logging: {session_csv_string}')
 
+    # endregion
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--mode', choices=['dev', 'prod'], default=None, type=str)
@@ -225,9 +246,18 @@ def main() -> None:
     data_path = 'data-dev' if mode == 'dev' else 'data-prod'
 
     bot = RecapBot(command_prefix='wrap:' ,intents=intents, mode=mode, data_path=data_path)
-    @bot.command()
-    async def test(ctx: commands.Context) -> None:
-        await ctx.send('test')
+
+    @bot.command(name='data')
+    #@commands.has_permissions(administrator=True)
+    async def data(ctx: commands.Context) -> None:
+        if not ctx.author.guild_permissions.administrator:
+            await ctx.send('Oops, this function is currently only usable by administrators.')
+            return
+        await bot.send_collected_data(ctx)
+
+    @bot.command(name='reset')
+    async def logs(ctx: commands.Context) -> None:
+        pass
 
     bot.run(token)
 
