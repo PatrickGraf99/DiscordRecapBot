@@ -5,6 +5,7 @@ import json
 import os
 import logging
 import time
+from venv import create
 
 import discord
 
@@ -34,6 +35,12 @@ class DataHandler:
         self.SESSION_LOG_FILENAME: str = 'session_log.csv'
         self.EVENT_LOG_FILENAME: str = 'event_log.csv'
         self.GUILD_EVENTS_FILENAME: str = 'guild_events.jsonl'
+        self.CONFIG_FILENAME: str = 'config.json'
+        self.CONFIG_BASE: dict = {
+            'allowed_roles': [],
+            'dm_export': True,
+            'needs_permissions': True
+        }
         self.json_schema_version: int = 1
 
     def ensure_guild_files_exist(self, guild_id: int) -> None:
@@ -45,6 +52,7 @@ class DataHandler:
         event_log_file = os.path.join(guild_dir, self.EVENT_LOG_FILENAME)
         session_log_file = os.path.join(guild_dir, self.SESSION_LOG_FILENAME)
         metadata_event_file = os.path.join(guild_dir, self.GUILD_EVENTS_FILENAME)
+        config_file = os.path.join(guild_dir, self.CONFIG_FILENAME)
         if not os.path.exists(event_log_file):
             with open(event_log_file, 'w') as file:
                 file.write(self.EVENT_LOG_HEADER)
@@ -54,7 +62,12 @@ class DataHandler:
         if not os.path.exists(metadata_event_file):
             with open(metadata_event_file, 'w') as file:
                 file.write('')
+        if not os.path.exists(config_file):
+            with open(config_file, 'w') as file:
+                file.write(json.dumps(self.CONFIG_BASE))
         self.initialized_guilds_ids.add(guild_id)
+
+    # region event logging
 
     def log_event(self, member_id: int, member_name: str, timestamp: float, guild_id: int, guild_name: str,
                   channel_id: int, channel_name: str, event_type: str) -> None:
@@ -158,20 +171,25 @@ class DataHandler:
         }
         self._append_guild_metadata(timestamp, guild_id, GuildEvent.GUILD_JOIN_BOT.value, payload)
 
-    def get_zip_for_guild(self, guild_id: int, guild_name: str) -> dict:
-        path:str = os.path.join(self.DATA_PATH, str(guild_id))
+    # endregion
+
+    def create_zip_for_guild(self, guild_id: int, guild_name: str) -> str:
+        path: str = os.path.join(self.DATA_PATH, str(guild_id))
         guild_name = guild_name.replace(' ', '_')
-        timestamp  = datetime.now()
-        formatted = timestamp.strftime("%Y-%m-%d_%H-%M-%S")
-        filename:str = 'data_' + guild_name + '_' + formatted
+        timestamp = datetime.now()
+        formatted_time = timestamp.strftime("%Y-%m-%d_%H-%M-%S")
+        filename: str = f'data_{guild_name}_{formatted_time}'
         target_path = os.path.join(path, filename)
         shutil.make_archive(target_path, 'zip', path)
-        file = discord.File(target_path + '.zip')
-        filepath = target_path + '.zip'
-        return {
-            'file': file,
-            'filepath': filepath
-        }
+        return f'{target_path}.zip'
+
+    def get_zip_for_guild(self, guild: discord.Guild) -> str:
+        filepath = self.create_zip_for_guild(guild.id, guild.name)
+        return filepath
+
+    def get_config_path_for_guild(self, guild_id: int) -> str:
+        path: str = os.path.join(self.DATA_PATH, str(guild_id), self.CONFIG_FILENAME)
+        return path
 
     def remove_file(self, path: str) -> None:
         os.remove(path)
