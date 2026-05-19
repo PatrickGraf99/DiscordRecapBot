@@ -4,8 +4,6 @@ import enum
 import json
 import os
 import logging
-import time
-from venv import create
 
 import discord
 
@@ -24,10 +22,8 @@ class GuildEvent(enum.Enum):
 class DataHandler:
 
     def __init__(self, data_path: str):
-        self.initialized_guilds_ids = set()
+        # Init constants
         self.DATA_PATH: str = data_path
-        if not os.path.exists(self.DATA_PATH):
-            os.mkdir(self.DATA_PATH)
         self.EVENT_LOG_HEADER: str = ('member_id,member_name,timestamp,guild_id,guild_name,'
                                       'channel_id,channel_name,event_type\n')
         self.SESSION_LOG_HEADER: str = ('member_id,member_name,start_time,duration,guild_id,guild_name,'
@@ -36,12 +32,28 @@ class DataHandler:
         self.EVENT_LOG_FILENAME: str = 'event_log.csv'
         self.GUILD_EVENTS_FILENAME: str = 'guild_events.jsonl'
         self.CONFIG_FILENAME: str = 'config.json'
+        self.GUILD_ID_NAME_MAP: str = 'guild_id_name_map.json'
         self.CONFIG_BASE: dict = {
             'allowed_roles': [],
             'dm_export': True,
             'needs_permissions': True
         }
+
+        # Init vars
         self.json_schema_version: int = 1
+        self.initialized_guilds_ids = set()
+        self.guild_id_name_map: dict = {}
+
+        # Call init methods
+        self.ensure_meta_dirs_and_files_exist()
+        self.load_guild_id_name_map()
+
+    def ensure_meta_dirs_and_files_exist(self) -> None:
+        os.makedirs(self.DATA_PATH, exist_ok=True)
+        path = os.path.join(self.DATA_PATH, self.GUILD_ID_NAME_MAP)
+        if not os.path.exists(path):
+            with open(path, 'w') as file:
+                json.dump({}, file)
 
     def ensure_guild_files_exist(self, guild_id: int) -> None:
         if guild_id in self.initialized_guilds_ids:
@@ -164,12 +176,14 @@ class DataHandler:
             'guild_name_new': guild_name_new,
         }
         self._append_guild_metadata(timestamp, guild_id, GuildEvent.GUILD_RENAME.value, payload)
+        self.sync_guild_id_name_map(guild_id, guild_name_new)
 
     def log_guild_bot_join(self, timestamp: float, guild_id: int, guild_name: str) -> None:
         payload = {
             'guild_name': guild_name,
         }
         self._append_guild_metadata(timestamp, guild_id, GuildEvent.GUILD_JOIN_BOT.value, payload)
+        self.sync_guild_id_name_map(guild_id, guild_name)
 
     # endregion
 
@@ -193,3 +207,15 @@ class DataHandler:
 
     def remove_file(self, path: str) -> None:
         os.remove(path)
+
+    def load_guild_id_name_map(self) -> None:
+        path = os.path.join(self.DATA_PATH, self.GUILD_ID_NAME_MAP)
+        with open(path, 'r') as file:
+            self.guild_id_name_map = json.load(file)
+
+    def sync_guild_id_name_map(self, guild_id: int, guild_name: str) -> None:
+        path: str = os.path.join(self.DATA_PATH, self.GUILD_ID_NAME_MAP)
+        if str(guild_id) not in self.guild_id_name_map or self.guild_id_name_map[str(guild_id)] != guild_name:
+            self.guild_id_name_map[str(guild_id)] = guild_name
+            with open(path, 'w') as file:
+                json.dump(self.guild_id_name_map, file, indent=4)

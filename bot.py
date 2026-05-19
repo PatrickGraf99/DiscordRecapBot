@@ -155,7 +155,7 @@ class RecapBot(commands.Bot):
         dm_channel = ctx.author.dm_channel
         if dm_channel is None:
             dm_channel = await self.create_dm(ctx.author)
-        filepath = self.data_handler.get_zip_for_guild(ctx.guild.id, ctx.guild.name)
+        filepath = self.data_handler.get_zip_for_guild(ctx.guild)
         file: discord.File = discord.File(filepath)
         await dm_channel.send(f'Here is all data stored for the guild {ctx.guild.name}')
         await dm_channel.send(file=file)
