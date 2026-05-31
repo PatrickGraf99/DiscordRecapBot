@@ -55,10 +55,12 @@ class DataHandler:
             with open(path, 'w') as file:
                 json.dump({}, file)
 
-    def ensure_guild_files_exist(self, guild_id: int) -> None:
+
+    def ensure_guild_files_exist(self, guild_id: int, guild_name:str = '') -> None:
         if guild_id in self.initialized_guilds_ids:
             return
-        self.sync_guild_id_name_map()
+        if guild_name != '':
+            self.sync_guild_id_name_map(guild_id, guild_name)
         guild_dir = os.path.join(self.DATA_PATH, str(guild_id))
         if not os.path.exists(guild_dir):
             os.mkdir(guild_dir)
