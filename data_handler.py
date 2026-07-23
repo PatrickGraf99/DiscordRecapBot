@@ -28,8 +28,11 @@ class DataHandler:
                                       'channel_id,channel_name,event_type\n')
         self.SESSION_LOG_HEADER: str = ('member_id,member_name,start_time,duration,guild_id,guild_name,'
                                         'channel_id,channel_name,session_type\n')
+        self.MESSAGE_METADATA_LOG_HEADER: str = ('member_id,member_name,timestamp,guild_id,guild_name,'
+                                        'channel_id,channel_name,message_length\n')
         self.SESSION_LOG_FILENAME: str = 'session_log.csv'
         self.EVENT_LOG_FILENAME: str = 'event_log.csv'
+        self.MESSAGE_METADATA_LOG_FILENAME: str = 'message_metadata_log.csv'
         self.GUILD_EVENTS_FILENAME: str = 'guild_events.jsonl'
         self.CONFIG_FILENAME: str = 'config.json'
         self.GUILD_ID_NAME_MAP: str = 'guild_id_name_map.json'
@@ -68,6 +71,7 @@ class DataHandler:
         session_log_file = os.path.join(guild_dir, self.SESSION_LOG_FILENAME)
         metadata_event_file = os.path.join(guild_dir, self.GUILD_EVENTS_FILENAME)
         config_file = os.path.join(guild_dir, self.CONFIG_FILENAME)
+        message_metadata_file = os.path.join(guild_dir, self.MESSAGE_METADATA_LOG_FILENAME)
         if not os.path.exists(event_log_file):
             with open(event_log_file, 'w') as file:
                 file.write(self.EVENT_LOG_HEADER)
@@ -80,6 +84,9 @@ class DataHandler:
         if not os.path.exists(config_file):
             with open(config_file, 'w') as file:
                 file.write(json.dumps(self.CONFIG_BASE))
+        if not os.path.exists(message_metadata_file):
+            with open(message_metadata_file, 'w') as file:
+                file.write(self.MESSAGE_METADATA_LOG_HEADER)
         self.initialized_guilds_ids.add(guild_id)
 
     # region event logging
@@ -103,6 +110,15 @@ class DataHandler:
         session_log_path = os.path.join(self.DATA_PATH, str(guild_id), self.SESSION_LOG_FILENAME)
         with open(session_log_path, 'a') as session_log:
             session_log.write(session_csv_string)
+
+    def log_message_metadata(self, timestamp: float, member_id: int, member_name: str, guild_id: int,
+                             guild_name: str, channel_id: int, channel_name: str, message_length: int):
+        self.ensure_guild_files_exist(guild_id)
+        message_metadata_string: str = (f'{member_id},{member_name},{timestamp},{guild_id},{guild_name},{channel_id},'
+                                        f'{channel_name},{message_length}\n')
+        message_metadata_log_path = os.path.join(self.DATA_PATH, str(guild_id), self.MESSAGE_METADATA_LOG_FILENAME)
+        with open(message_metadata_log_path, 'a') as message_metadata_log:
+            message_metadata_log.write(message_metadata_string)
 
     def _append_guild_metadata(self, timestamp: float, guild_id: int, guild_event_type: str, payload: dict) -> None:
         logger.debug(f'Guild {guild_id} event type {guild_event_type}')

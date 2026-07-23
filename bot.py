@@ -6,8 +6,7 @@ import logging
 from discord.ext import commands
 
 import discord
-from discord import VoiceChannel, Intents, ChannelType
-from discord.ext.commands import context
+from discord import VoiceChannel, TextChannel, Intents
 
 from config_utils import ConfigManager
 from data_handler import DataHandler
@@ -44,9 +43,16 @@ class RecapBot(commands.Bot):
         logger.info('Checked file structure and created missing directories and files, synced guild names to ids')
 
     async def on_message(self, message) -> None:
-        #logger.debug(f'Message received from {message.author}: {message.content}')
-        # TODO: Build message logging
-        # TODO: {timestamp; author; guild; channel_id}
+        timestamp = time.time()
+        logger.debug('Message received')
+        if not message.author.bot and message.channel.type is discord.ChannelType.text:
+            logger.debug('Received message in a TextChannel that is not from a bot')
+            guild: discord.Guild = message.guild
+            member: discord.Member = message.author
+            if guild is None:
+                logger.debug(f'Guild is none for message, cannot store metadata')
+            self.data_handler.log_message_metadata(timestamp, member.id, member.name, guild.id, guild.name,
+                                                   message.channel.id, message.channel.name, len(message.content))
         await self.process_commands(message)
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
@@ -156,7 +162,7 @@ class RecapBot(commands.Bot):
     async def send_collected_data(self, ctx) -> None:
         if not self.has_permission(ctx.author, ctx.guild):
             await ctx.send('You do not have permission to use this command, please talk to an admin')
-            return 
+            return
         await ctx.send('All data that has been stored will be sent to you via DM!')
         dm_channel = ctx.author.dm_channel
         if dm_channel is None:
