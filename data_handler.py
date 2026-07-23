@@ -191,14 +191,16 @@ class DataHandler:
     # endregion
 
     def create_zip_for_guild(self, guild_id: int, guild_name: str) -> str:
-        path: str = os.path.join(self.DATA_PATH, str(guild_id))
+        guild_path: str = os.path.join(self.DATA_PATH, str(guild_id))
         guild_name = guild_name.replace(' ', '_')
         timestamp = datetime.now()
         formatted_time = timestamp.strftime("%Y-%m-%d_%H-%M-%S")
         filename: str = f'data_{guild_name}_{formatted_time}'
-        target_path = os.path.join(path, filename)
-        shutil.make_archive(target_path, 'zip', path)
+        target_path = os.path.join(self.DATA_PATH, filename)
+        shutil.make_archive(target_path, 'zip', guild_path)
         return f'{target_path}.zip'
+
+
 
     def get_zip_for_guild(self, guild: discord.Guild) -> str:
         filepath = self.create_zip_for_guild(guild.id, guild.name)

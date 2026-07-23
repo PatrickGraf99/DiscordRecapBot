@@ -7,8 +7,9 @@ from discord.ext import commands
 
 import discord
 from discord import VoiceChannel, Intents, ChannelType
+from discord.ext.commands import context
 
-
+from config_utils import ConfigManager
 from data_handler import DataHandler
 
 logger = logging.getLogger('ServerRecapBot.bot')
@@ -31,6 +32,7 @@ class RecapBot(commands.Bot):
         self.mode: str = mode
         self.currently_tracked_connections: dict = {}
         self.data_handler = DataHandler(data_path)
+        self.config_manager = ConfigManager(self.data_handler)
 
     # region Overrides
 
@@ -42,7 +44,7 @@ class RecapBot(commands.Bot):
         logger.info('Checked file structure and created missing directories and files, synced guild names to ids')
 
     async def on_message(self, message) -> None:
-        logger.debug(f'Message received from {message.author}: {message.content}')
+        #logger.debug(f'Message received from {message.author}: {message.content}')
         # TODO: Build message logging
         # TODO: {timestamp; author; guild; channel_id}
         await self.process_commands(message)
@@ -152,6 +154,9 @@ class RecapBot(commands.Bot):
     # region Command Methods
 
     async def send_collected_data(self, ctx) -> None:
+        if not self.has_permission(ctx.author, ctx.guild):
+            await ctx.send('You do not have permission to use this command, please talk to an admin')
+            return 
         await ctx.send('All data that has been stored will be sent to you via DM!')
         dm_channel = ctx.author.dm_channel
         if dm_channel is None:
@@ -162,9 +167,65 @@ class RecapBot(commands.Bot):
         await dm_channel.send(file=file)
         self.data_handler.remove_file(filepath)
 
+    async def add_allowed_role(self, context: commands.Context, role_name: str) -> None:
+        role_to_add: discord.Role = None
+        guild: discord.Guild = context.guild
+        for role in context.guild.roles:
+            if role.name == role_name:
+                role_to_add = role
+        if role_to_add is None:
+            await context.send('Oops, it seems a role with this name can not be found on your server')
+            return
+        result = self.config_manager.add_allowed_role(guild, role_to_add)
+        if result is True:
+            await context.send(f'Successfully added {role_name} to the allowed list')
+        else:
+            await context.send(f'Failed to add {role_name} to the allowed list, is the role already on the list?')
+
+    async def remove_allowed_role(self, context: commands.Context, role_name: str) -> None:
+        role_to_remove: discord.Role = None
+        guild: discord.Guild = context.guild
+        for role in context.guild.roles:
+            if role.name == role_name:
+                role_to_remove = role
+        if role_to_remove is None:
+            await context.send('Oops, it seems a role with this name can not be found on your server')
+            return
+        result = self.config_manager.remove_allowed_role(guild, role_to_remove)
+        if result is True:
+            await context.send(f'Successfully removed {role_name} from the allowed list')
+        else:
+            await context.send(f'{role_name} could not be removed from the allowed list. Was the role really on the list?')
+
+    async def list_allowed_roles(self, context: commands.Context) -> None:
+        guild: discord.Guild = context.guild
+        allowed_list = [role.name for role in self.config_manager.get_allowed_roles_list(guild)]
+        await context.send(f'Here is a list of all roles that have permissions: {allowed_list}')
+
+    async def check_member_for_permissions(self, context: commands.Context, member_name) -> None:
+        await context.send('Oops, it seems that this functionality is not yet implemented.')
+
+    async def send_roles_help(self, context: commands.Context) -> None:
+        if context.author.guild_permissions.administrator:
+            roles = context.guild.roles
+            roles = [role.name for role in roles if role.name != '@everyone']
+            await context.send('This is the help for the roles command group\n'
+                               '\n'
+                               'Available methods:\n'
+                               '- add; adds a role to the list of allowed roles: ```roles add <rolename>```\n'
+                               '- remove; removes a role to the list of allowed roles: ```roles remove <rolename>```\n'
+                               '- list; list all roles that are currently on the allowed list: ```roles list```\n'
+                               '\n'
+                               f'Here is a list of all roles currently available on your server: {roles}')
+        else:
+            await context.send('The roles command group is only intended for administrators.')
+
     # endregion
 
     # region Own Methods
+
+    def has_permission(self, member: discord.Member, guild: discord.Guild) -> bool:
+        return self.config_manager.has_permission(member, guild)
 
     def handle_voice_join(self, member: discord.Member, timestamp: float, voice_channel: discord.VoiceChannel) -> None:
         """
@@ -220,12 +281,35 @@ def add_commands(bot: RecapBot):
     @bot.command(name='data')
     # @commands.has_permissions(administrator=True)
     async def data(ctx: commands.Context) -> None:
-        if not ctx.author.guild_permissions.administrator:
-            await ctx.send('Oops, this function is currently only usable by administrators.')
-            return
         await bot.send_collected_data(ctx)
 
-    @bot.command(name='roles')
+    @bot.group(name='roles', invoke_without_command=True)
+    @commands.guild_only()
     async def roles(ctx: commands.Context) -> None:
-        logger.debug(ctx.author.roles)
-        #await ctx.send(ctx.author.roles)
+        logger.info("Roles command called with no arguments, skipping execution")
+        await bot.send_roles_help(ctx)
+
+    @roles.command(name='add')
+    @commands.has_permissions(administrator=True)
+    async def roles_add(ctx: commands.Context, *, role_name) -> None:
+        # Role object has name and id
+        await bot.add_allowed_role(ctx, role_name)
+
+    @roles.command(name='remove')
+    @commands.has_permissions(administrator=True)
+    async def roles_remove(ctx: commands.Context, *, role_name) -> None:
+        await bot.remove_allowed_role(ctx, role_name)
+
+    @roles.command(name='list')
+    @commands.has_permissions(administrator=True)
+    async def roles_list(ctx: commands.Context) -> None:
+        await bot.list_allowed_roles(ctx)
+
+    @roles.command(name='check')
+    @commands.has_permissions(administrator=True)
+    async def roles_check(ctx: commands.Context, member_name: str) -> None:
+        await bot.check_member_for_permissions(ctx, member_name)
+
+    @roles.command(name='help')
+    async def roles_help(ctx: commands.Context) -> None:
+        await bot.send_roles_help(ctx)
