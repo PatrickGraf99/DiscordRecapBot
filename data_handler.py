@@ -1,8 +1,14 @@
+import shutil
+from datetime import datetime
 import enum
 import json
 import os
 import logging
 
+import discord
+import csv
+
+from aiohttp._websocket import writer
 
 logger = logging.getLogger('ServerRecapBot.data')
 
@@ -19,61 +25,100 @@ class GuildEvent(enum.Enum):
 class DataHandler:
 
     def __init__(self, data_path: str):
-        self.initialized_guilds_ids = set()
+        # Init constants
         self.DATA_PATH: str = data_path
-        if not os.path.exists(self.DATA_PATH):
-            os.mkdir(self.DATA_PATH)
         self.EVENT_LOG_HEADER: str = ('member_id,member_name,timestamp,guild_id,guild_name,'
                                       'channel_id,channel_name,event_type\n')
         self.SESSION_LOG_HEADER: str = ('member_id,member_name,start_time,duration,guild_id,guild_name,'
                                         'channel_id,channel_name,session_type\n')
+        self.MESSAGE_METADATA_LOG_HEADER: str = ('member_id,member_name,timestamp,guild_id,guild_name,'
+                                        'channel_id,channel_name,message_length\n')
         self.SESSION_LOG_FILENAME: str = 'session_log.csv'
         self.EVENT_LOG_FILENAME: str = 'event_log.csv'
+        self.MESSAGE_METADATA_LOG_FILENAME: str = 'message_metadata_log.csv'
         self.GUILD_EVENTS_FILENAME: str = 'guild_events.jsonl'
-        self.GUILD_METADATA_SNAPSHOT_FILENAME: str = 'guild_snapshot.json'
-        self.json_schema_version: int = 1
+        self.CONFIG_FILENAME: str = 'config.json'
+        self.GUILD_ID_NAME_MAP: str = 'guild_id_name_map.json'
+        self.CONFIG_BASE: dict = {
+            'allowed_roles': [],
+            'dm_export': True,
+            'needs_permissions': True
+        }
 
-    def ensure_guild_files_exist(self, guild_id: int) -> None:
+        # Init vars
+        self.json_schema_version: int = 1
+        self.initialized_guilds_ids = set()
+        self.guild_id_name_map: dict = {}
+
+        # Call init methods
+        self.ensure_meta_dirs_and_files_exist()
+        self.load_guild_id_name_map()
+
+    def ensure_meta_dirs_and_files_exist(self) -> None:
+        os.makedirs(self.DATA_PATH, exist_ok=True)
+        path = os.path.join(self.DATA_PATH, self.GUILD_ID_NAME_MAP)
+        if not os.path.exists(path):
+            with open(path, 'w') as file:
+                json.dump({}, file)
+
+
+    def ensure_guild_files_exist(self, guild_id: int, guild_name:str = '') -> None:
         if guild_id in self.initialized_guilds_ids:
             return
+        if guild_name != '':
+            self.sync_guild_id_name_map(guild_id, guild_name)
         guild_dir = os.path.join(self.DATA_PATH, str(guild_id))
         if not os.path.exists(guild_dir):
             os.mkdir(guild_dir)
         event_log_file = os.path.join(guild_dir, self.EVENT_LOG_FILENAME)
         session_log_file = os.path.join(guild_dir, self.SESSION_LOG_FILENAME)
         metadata_event_file = os.path.join(guild_dir, self.GUILD_EVENTS_FILENAME)
-        metadata_snapshot_file = os.path.join(guild_dir, self.GUILD_METADATA_SNAPSHOT_FILENAME)
+        config_file = os.path.join(guild_dir, self.CONFIG_FILENAME)
+        message_metadata_file = os.path.join(guild_dir, self.MESSAGE_METADATA_LOG_FILENAME)
         if not os.path.exists(event_log_file):
             with open(event_log_file, 'w') as file:
                 file.write(self.EVENT_LOG_HEADER)
         if not os.path.exists(session_log_file):
             with open(session_log_file, 'w') as file:
                 file.write(self.SESSION_LOG_HEADER)
-        for filename in [metadata_event_file, metadata_snapshot_file]:
-            if not os.path.exists(filename):
-                with open(filename, 'w') as file:
-                    file.write('')
+        if not os.path.exists(metadata_event_file):
+            with open(metadata_event_file, 'w') as file:
+                file.write('')
+        if not os.path.exists(config_file):
+            with open(config_file, 'w') as file:
+                file.write(json.dumps(self.CONFIG_BASE))
+        if not os.path.exists(message_metadata_file):
+            with open(message_metadata_file, 'w') as file:
+                file.write(self.MESSAGE_METADATA_LOG_HEADER)
         self.initialized_guilds_ids.add(guild_id)
+
+    # region event logging
 
     def log_event(self, member_id: int, member_name: str, timestamp: float, guild_id: int, guild_name: str,
                   channel_id: int, channel_name: str, event_type: str) -> None:
         self.ensure_guild_files_exist(guild_id)
-        event_csv_string: str = (f'{member_id},{member_name},{timestamp},{guild_id},{guild_name},'
-                                 f'{channel_id},{channel_name},{event_type}\n')
-
         event_log_path = os.path.join(self.DATA_PATH, str(guild_id), self.EVENT_LOG_FILENAME)
-        with open(event_log_path, 'a') as event_log:
-            event_log.write(event_csv_string)
+        with open(event_log_path, 'a', newline='') as event_log:
+            csv_writer = csv.writer(event_log)
+            csv_writer.writerow([member_id, member_name, timestamp, guild_id, guild_name, channel_id, channel_name, event_type])
 
     def log_session(self, member_id: int, member_name: str, start_time: float, duration: float,
                     guild_id: int, guild_name: str, channel_id: int, channel_name: str, session_type: str) -> None:
         self.ensure_guild_files_exist(guild_id)
-        session_csv_string: str = (f'{member_id},{member_name},{start_time},{duration},{guild_id},{guild_name},'
-                                   f'{channel_id},{channel_name},{session_type}\n')
 
         session_log_path = os.path.join(self.DATA_PATH, str(guild_id), self.SESSION_LOG_FILENAME)
-        with open(session_log_path, 'a') as session_log:
-            session_log.write(session_csv_string)
+        with open(session_log_path, 'a', newline='') as session_log:
+            csv_writer = csv.writer(session_log)
+            csv_writer.writerow([member_id, member_name, start_time, duration, guild_id, guild_name, channel_id, channel_name,session_type])
+
+    def log_message_metadata(self, timestamp: float, member_id: int, member_name: str, guild_id: int,
+                             guild_name: str, channel_id: int, channel_name: str, message_length: int):
+        self.ensure_guild_files_exist(guild_id)
+        message_metadata_log_path = os.path.join(self.DATA_PATH, str(guild_id), self.MESSAGE_METADATA_LOG_FILENAME)
+        with open(message_metadata_log_path, 'a', newline='') as message_metadata_log:
+            csv_writer = csv.writer(message_metadata_log)
+            csv_writer.writerow([member_id, member_name, timestamp, guild_id, guild_name, channel_id, channel_name, message_length])
+
 
     def _append_guild_metadata(self, timestamp: float, guild_id: int, guild_event_type: str, payload: dict) -> None:
         logger.debug(f'Guild {guild_id} event type {guild_event_type}')
@@ -150,9 +195,48 @@ class DataHandler:
             'guild_name_new': guild_name_new,
         }
         self._append_guild_metadata(timestamp, guild_id, GuildEvent.GUILD_RENAME.value, payload)
+        self.sync_guild_id_name_map(guild_id, guild_name_new)
 
     def log_guild_bot_join(self, timestamp: float, guild_id: int, guild_name: str) -> None:
         payload = {
             'guild_name': guild_name,
         }
         self._append_guild_metadata(timestamp, guild_id, GuildEvent.GUILD_JOIN_BOT.value, payload)
+        self.sync_guild_id_name_map(guild_id, guild_name)
+
+    # endregion
+
+    def create_zip_for_guild(self, guild_id: int, guild_name: str) -> str:
+        guild_path: str = os.path.join(self.DATA_PATH, str(guild_id))
+        guild_name = guild_name.replace(' ', '_')
+        timestamp = datetime.now()
+        formatted_time = timestamp.strftime("%Y-%m-%d_%H-%M-%S")
+        filename: str = f'data_{guild_name}_{formatted_time}'
+        target_path = os.path.join(self.DATA_PATH, filename)
+        shutil.make_archive(target_path, 'zip', guild_path)
+        return f'{target_path}.zip'
+
+
+
+    def get_zip_for_guild(self, guild: discord.Guild) -> str:
+        filepath = self.create_zip_for_guild(guild.id, guild.name)
+        return filepath
+
+    def get_config_path_for_guild(self, guild_id: int) -> str:
+        path: str = os.path.join(self.DATA_PATH, str(guild_id), self.CONFIG_FILENAME)
+        return path
+
+    def remove_file(self, path: str) -> None:
+        os.remove(path)
+
+    def load_guild_id_name_map(self) -> None:
+        path = os.path.join(self.DATA_PATH, self.GUILD_ID_NAME_MAP)
+        with open(path, 'r') as file:
+            self.guild_id_name_map = json.load(file)
+
+    def sync_guild_id_name_map(self, guild_id: int, guild_name: str) -> None:
+        path: str = os.path.join(self.DATA_PATH, self.GUILD_ID_NAME_MAP)
+        if str(guild_id) not in self.guild_id_name_map or self.guild_id_name_map[str(guild_id)] != guild_name:
+            self.guild_id_name_map[str(guild_id)] = guild_name
+            with open(path, 'w') as file:
+                json.dump(self.guild_id_name_map, file, indent=4)

@@ -1,18 +1,18 @@
-from datetime import datetime
-import os
-import sys
+
 import time
 from enum import Enum
-import argparse
 import logging
 
-import discord
-from discord import VoiceChannel, Intents, ChannelType
-from dotenv import load_dotenv
+from discord.ext import commands
 
+import discord
+from discord import VoiceChannel, TextChannel, Intents
+
+from config_utils import ConfigManager
 from data_handler import DataHandler
 
 logger = logging.getLogger('ServerRecapBot.bot')
+
 
 class EventType(Enum):
     JOIN = 'join'
@@ -24,25 +24,37 @@ class SessionType(Enum):
     CORRUPTED = 'corrupted'
 
 
-class RecapBot(discord.Client):
+class RecapBot(commands.Bot):
 
     def __init__(self, mode: str, data_path: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.mode: str = mode
         self.currently_tracked_connections: dict = {}
         self.data_handler = DataHandler(data_path)
+        self.config_manager = ConfigManager(self.data_handler)
 
+    # region Overrides
 
     async def on_ready(self) -> None:
         logger.info(f'Logged in as {self.user.name}')
         logger.info('Checking file structure for all guilds the bot is in, creating missing directories')
         for guild in self.guilds:
-            self.data_handler.ensure_guild_files_exist(guild.id)
+            self.data_handler.ensure_guild_files_exist(guild.id, guild.name)
+        logger.info('Checked file structure and created missing directories and files, synced guild names to ids')
 
     async def on_message(self, message) -> None:
-        logger.debug(f'Message received from {message.author}: {message.content}')
-        # TODO: Build message logging
-        # TODO: {timestamp; author; guild; channel_id}
+        timestamp = time.time()
+        logger.debug('Message received')
+        if not message.author.bot and message.channel.type is discord.ChannelType.text:
+            logger.debug('Received message in a TextChannel that is not from a bot')
+            guild: discord.Guild = message.guild
+            member: discord.Member = message.author
+            if guild is None:
+                logger.debug(f'Guild is none for message, cannot store metadata')
+            else:
+                self.data_handler.log_message_metadata(timestamp, member.id, member.name, guild.id, guild.name,
+                                                   message.channel.id, message.channel.name, len(message.content))
+        await self.process_commands(message)
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         logger.info(f'Bot has joined guild {guild.name} with id {guild.id}')
@@ -144,7 +156,83 @@ class RecapBot(discord.Client):
         self.handle_voice_leave(member, timestamp, channel_before)
         self.handle_voice_join(member, timestamp, channel_after)
 
+    # endregion
 
+    # region Command Methods
+
+    async def send_collected_data(self, ctx) -> None:
+        if not self.has_permission(ctx.author, ctx.guild):
+            await ctx.send('You do not have permission to use this command, please talk to an admin')
+            return
+        await ctx.send('All data that has been stored will be sent to you via DM!')
+        dm_channel = ctx.author.dm_channel
+        if dm_channel is None:
+            dm_channel = await self.create_dm(ctx.author)
+        filepath = self.data_handler.get_zip_for_guild(ctx.guild)
+        file: discord.File = discord.File(filepath)
+        await dm_channel.send(f'Here is all data stored for the guild {ctx.guild.name}')
+        await dm_channel.send(file=file)
+        self.data_handler.remove_file(filepath)
+
+    async def add_allowed_role(self, context: commands.Context, role_name: str) -> None:
+        role_to_add: discord.Role = None
+        guild: discord.Guild = context.guild
+        for role in context.guild.roles:
+            if role.name == role_name:
+                role_to_add = role
+        if role_to_add is None:
+            await context.send('Oops, it seems a role with this name can not be found on your server')
+            return
+        result = self.config_manager.add_allowed_role(guild, role_to_add)
+        if result is True:
+            await context.send(f'Successfully added {role_name} to the allowed list')
+        else:
+            await context.send(f'Failed to add {role_name} to the allowed list, is the role already on the list?')
+
+    async def remove_allowed_role(self, context: commands.Context, role_name: str) -> None:
+        role_to_remove: discord.Role = None
+        guild: discord.Guild = context.guild
+        for role in context.guild.roles:
+            if role.name == role_name:
+                role_to_remove = role
+        if role_to_remove is None:
+            await context.send('Oops, it seems a role with this name can not be found on your server')
+            return
+        result = self.config_manager.remove_allowed_role(guild, role_to_remove)
+        if result is True:
+            await context.send(f'Successfully removed {role_name} from the allowed list')
+        else:
+            await context.send(f'{role_name} could not be removed from the allowed list. Was the role really on the list?')
+
+    async def list_allowed_roles(self, context: commands.Context) -> None:
+        guild: discord.Guild = context.guild
+        allowed_list = [role.name for role in self.config_manager.get_allowed_roles_list(guild)]
+        await context.send(f'Here is a list of all roles that have permissions: {allowed_list}')
+
+    async def check_member_for_permissions(self, context: commands.Context, member_name) -> None:
+        await context.send('Oops, it seems that this functionality is not yet implemented.')
+
+    async def send_roles_help(self, context: commands.Context) -> None:
+        if context.author.guild_permissions.administrator:
+            roles = context.guild.roles
+            roles = [role.name for role in roles if role.name != '@everyone']
+            await context.send('This is the help for the roles command group\n'
+                               '\n'
+                               'Available methods:\n'
+                               '- add; adds a role to the list of allowed roles: ```roles add <rolename>```\n'
+                               '- remove; removes a role to the list of allowed roles: ```roles remove <rolename>```\n'
+                               '- list; list all roles that are currently on the allowed list: ```roles list```\n'
+                               '\n'
+                               f'Here is a list of all roles currently available on your server: {roles}')
+        else:
+            await context.send('The roles command group is only intended for administrators.')
+
+    # endregion
+
+    # region Own Methods
+
+    def has_permission(self, member: discord.Member, guild: discord.Guild) -> bool:
+        return self.config_manager.has_permission(member, guild)
 
     def handle_voice_join(self, member: discord.Member, timestamp: float, voice_channel: discord.VoiceChannel) -> None:
         """
@@ -185,65 +273,7 @@ class RecapBot(discord.Client):
 
         #logger.debug(f'A session has been ended, logging: {session_csv_string}')
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-m', '--mode', choices=['dev', 'prod'], default=None, type=str)
-    args = parser.parse_args()
-    mode: str = args.mode
-    auto_mode = False
-    if mode is None:
-        auto_mode = True
-        mode = 'dev'
-
-    init_logs(mode)
-
-    if mode == 'dev':
-        if auto_mode:
-            logger.warning('No mode was specified, defaulting to development')
-        logger.info('Starting bot in development mode')
-
-    elif mode == 'prod':
-        answer = input('Bot about to run in production, continue? (y/n) ')
-        while answer != 'y' and answer != 'n':
-            print('Please enter either "y" or "n"')
-            answer = input('Bot about to run in production, continue? (y/n) ')
-        if answer == 'n':
-            logger.info('Exiting bot')
-            exit(0)
-        elif answer == 'y':
-            logger.info('Starting bot in production mode')
-
-    load_dotenv()
-
-    intents = get_bot_intents()
-
-    token = os.getenv('DEV_TOKEN') if mode == 'dev' else os.getenv('PROD_TOKEN')
-    data_path = 'data-dev' if mode == 'dev' else 'data-prod'
-
-    client = RecapBot(intents=intents, mode=mode, data_path=data_path)
-    client.run(token)
-
-def init_logs(mode: str) -> None:
-    if not os.path.exists('logs'):
-        os.mkdir('logs')
-
-    timestamp_str: str = datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d_%H-%M-%S")
-    logfile_name: str = f'logs-dev-{timestamp_str}.log' if mode == 'dev' else f'logs-prod-{timestamp_str}.log'
-    level = logging.DEBUG if mode == 'dev' else logging.INFO
-
-    file_handler = logging.FileHandler(os.path.join('logs',logfile_name))
-    file_handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s',
-                                                   datefmt='%Y-%m-%d %H:%M:%S'))
-    file_handler.setLevel(level)
-
-    stdout_handler = logging.StreamHandler(sys.stdout)
-    stdout_handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s',
-                                                  datefmt='%Y-%m-%d %H:%M:%S'))
-    stdout_handler.setLevel(level)
-
-    logger.setLevel(level)
-    logger.addHandler(file_handler)
-    logger.addHandler(stdout_handler)
+    # endregion
 
 def get_bot_intents() -> Intents:
     intents = discord.Intents.default()
@@ -251,7 +281,42 @@ def get_bot_intents() -> Intents:
     intents.guilds = True
     intents.members = True
     intents.messages = True
+    intents.message_content = True
     return intents
 
-if __name__ == '__main__':
-    main()
+def add_commands(bot: RecapBot):
+    @bot.command(name='data')
+    # @commands.has_permissions(administrator=True)
+    async def data(ctx: commands.Context) -> None:
+        await bot.send_collected_data(ctx)
+
+    @bot.group(name='roles', invoke_without_command=True)
+    @commands.guild_only()
+    async def roles(ctx: commands.Context) -> None:
+        logger.info("Roles command called with no arguments, skipping execution")
+        await bot.send_roles_help(ctx)
+
+    @roles.command(name='add')
+    @commands.has_permissions(administrator=True)
+    async def roles_add(ctx: commands.Context, *, role_name) -> None:
+        # Role object has name and id
+        await bot.add_allowed_role(ctx, role_name)
+
+    @roles.command(name='remove')
+    @commands.has_permissions(administrator=True)
+    async def roles_remove(ctx: commands.Context, *, role_name) -> None:
+        await bot.remove_allowed_role(ctx, role_name)
+
+    @roles.command(name='list')
+    @commands.has_permissions(administrator=True)
+    async def roles_list(ctx: commands.Context) -> None:
+        await bot.list_allowed_roles(ctx)
+
+    @roles.command(name='check')
+    @commands.has_permissions(administrator=True)
+    async def roles_check(ctx: commands.Context, member_name: str) -> None:
+        await bot.check_member_for_permissions(ctx, member_name)
+
+    @roles.command(name='help')
+    async def roles_help(ctx: commands.Context) -> None:
+        await bot.send_roles_help(ctx)
