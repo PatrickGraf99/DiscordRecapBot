@@ -51,7 +51,8 @@ class RecapBot(commands.Bot):
             member: discord.Member = message.author
             if guild is None:
                 logger.debug(f'Guild is none for message, cannot store metadata')
-            self.data_handler.log_message_metadata(timestamp, member.id, member.name, guild.id, guild.name,
+            else:
+                self.data_handler.log_message_metadata(timestamp, member.id, member.name, guild.id, guild.name,
                                                    message.channel.id, message.channel.name, len(message.content))
         await self.process_commands(message)
 

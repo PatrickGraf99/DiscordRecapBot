@@ -6,6 +6,9 @@ import os
 import logging
 
 import discord
+import csv
+
+from aiohttp._websocket import writer
 
 logger = logging.getLogger('ServerRecapBot.data')
 
@@ -94,31 +97,28 @@ class DataHandler:
     def log_event(self, member_id: int, member_name: str, timestamp: float, guild_id: int, guild_name: str,
                   channel_id: int, channel_name: str, event_type: str) -> None:
         self.ensure_guild_files_exist(guild_id)
-        event_csv_string: str = (f'{member_id},{member_name},{timestamp},{guild_id},{guild_name},'
-                                 f'{channel_id},{channel_name},{event_type}\n')
-
         event_log_path = os.path.join(self.DATA_PATH, str(guild_id), self.EVENT_LOG_FILENAME)
-        with open(event_log_path, 'a') as event_log:
-            event_log.write(event_csv_string)
+        with open(event_log_path, 'a', newline='') as event_log:
+            csv_writer = csv.writer(event_log)
+            csv_writer.writerow([member_id, member_name, timestamp, guild_id, guild_name, channel_id, channel_name, event_type])
 
     def log_session(self, member_id: int, member_name: str, start_time: float, duration: float,
                     guild_id: int, guild_name: str, channel_id: int, channel_name: str, session_type: str) -> None:
         self.ensure_guild_files_exist(guild_id)
-        session_csv_string: str = (f'{member_id},{member_name},{start_time},{duration},{guild_id},{guild_name},'
-                                   f'{channel_id},{channel_name},{session_type}\n')
 
         session_log_path = os.path.join(self.DATA_PATH, str(guild_id), self.SESSION_LOG_FILENAME)
-        with open(session_log_path, 'a') as session_log:
-            session_log.write(session_csv_string)
+        with open(session_log_path, 'a', newline='') as session_log:
+            csv_writer = csv.writer(session_log)
+            csv_writer.writerow([member_id, member_name, start_time, duration, guild_id, guild_name, channel_id, channel_name,session_type])
 
     def log_message_metadata(self, timestamp: float, member_id: int, member_name: str, guild_id: int,
                              guild_name: str, channel_id: int, channel_name: str, message_length: int):
         self.ensure_guild_files_exist(guild_id)
-        message_metadata_string: str = (f'{member_id},{member_name},{timestamp},{guild_id},{guild_name},{channel_id},'
-                                        f'{channel_name},{message_length}\n')
         message_metadata_log_path = os.path.join(self.DATA_PATH, str(guild_id), self.MESSAGE_METADATA_LOG_FILENAME)
-        with open(message_metadata_log_path, 'a') as message_metadata_log:
-            message_metadata_log.write(message_metadata_string)
+        with open(message_metadata_log_path, 'a', newline='') as message_metadata_log:
+            csv_writer = csv.writer(message_metadata_log)
+            csv_writer.writerow([member_id, member_name, timestamp, guild_id, guild_name, channel_id, channel_name, message_length])
+
 
     def _append_guild_metadata(self, timestamp: float, guild_id: int, guild_event_type: str, payload: dict) -> None:
         logger.debug(f'Guild {guild_id} event type {guild_event_type}')
